@@ -18,20 +18,15 @@
  */
 package com.graphhopper.routing;
 
-import static org.junit.Assert.assertEquals;
+import com.graphhopper.routing.edgebased.EdgeDijkstraBidirectionRef;
+import com.graphhopper.routing.util.*;
+import com.graphhopper.storage.Graph;
+import com.graphhopper.util.Helper;
+import org.junit.Test;
 
 import java.io.IOException;
 
-import org.junit.Test;
-
-import com.graphhopper.routing.edgebased.EdgeDijkstraBidirectionRef;
-import com.graphhopper.routing.util.AlgorithmPreparation;
-import com.graphhopper.routing.util.FastestCalc;
-import com.graphhopper.routing.util.FlagEncoder;
-import com.graphhopper.routing.util.NoOpAlgorithmPreparation;
-import com.graphhopper.routing.util.WeightCalculation;
-import com.graphhopper.storage.Graph;
-import com.graphhopper.util.Helper;
+import static org.junit.Assert.assertEquals;
 
 /**
  * 
@@ -42,7 +37,7 @@ public class EdgeDijkstraBidirectionRefTest extends AbstractRoutingAlgorithmTest
 
     @Override
     public AlgorithmPreparation prepareGraph( Graph g,
-            final FlagEncoder encoder, final WeightCalculation calc )
+            final FlagEncoder encoder, final Weighting calc )
     {
         return new NoOpAlgorithmPreparation()
         {
@@ -54,7 +49,6 @@ public class EdgeDijkstraBidirectionRefTest extends AbstractRoutingAlgorithmTest
         }.setGraph(g);
     }
 
-    @Override
     @Test
     public void testPerformance() throws IOException
     {
@@ -66,7 +60,7 @@ public class EdgeDijkstraBidirectionRefTest extends AbstractRoutingAlgorithmTest
     public void testCalcWithTurnRestrictions_PTurnInShortestPath()
     {
         Graph graph = createTestGraphPTurn(createTurnCostsGraph());
-        Path p1 = prepareGraph(graph, carEncoder, new FastestCalc(carEncoder)).createAlgo()
+        Path p1 = prepareGraph(graph, carEncoder, new FastestWeighting(carEncoder)).createAlgo()
                 .calcPath(3, 0);
         assertEquals(Helper.createTList(3, 5, 8, 9, 10, 5, 6, 7, 0), p1.calcNodes());
         assertEquals(p1.toString(), 26, p1.getDistance(), 1e-6);

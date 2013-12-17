@@ -40,7 +40,9 @@ public class FootFlagEncoder extends AbstractFlagEncoder
     protected FootFlagEncoder()
     {
         restrictions = new String[]
-        { "foot", "access" };
+        {
+            "foot", "access"
+        };
         restrictedValues.add("private");
         restrictedValues.add("no");
         restrictedValues.add("restricted");
@@ -80,17 +82,16 @@ public class FootFlagEncoder extends AbstractFlagEncoder
     @Override
     public String toString()
     {
-        return "FOOT";
+        return "foot";
     }
 
     /**
      * Some ways are okay but not separate for pedestrians.
      * <p/>
-     * 
      * @param way
      */
     @Override
-    public int isAllowed( OSMWay way )
+    public long isAllowed( OSMWay way )
     {
         String highwayValue = way.getTag("highway");
         if (highwayValue == null)
@@ -144,12 +145,12 @@ public class FootFlagEncoder extends AbstractFlagEncoder
     }
 
     @Override
-    public int handleWayTags( int allowed, OSMWay way )
+    public long handleWayTags( long allowed, OSMWay way )
     {
         if ((allowed & acceptBit) == 0)
             return 0;
 
-        int encoded;
+        long encoded;
         if ((allowed & ferryBit) == 0)
         {
             String sacScale = way.getTag("sac_scale");
@@ -166,71 +167,45 @@ public class FootFlagEncoder extends AbstractFlagEncoder
             encoded |= directionBitMask;
 
             // mark safe ways or ways with cycle lanes
-            if (safeHighwayTags.contains(way.getTag("highway")) || way.hasTag("sidewalk", sidewalks))
+            if (safeHighwayTags.contains(way.getTag("highway"))
+                    || way.hasTag("sidewalk", sidewalks))
             {
                 encoded |= safeWayBit;
             }
 
         } else
         {
-            int durationInMinutes = parseDuration(way.getTag("duration"));
-            if (durationInMinutes == 0)
-            {
-                // unknown speed -> put penalty on ferry transport
-                encoded = speedEncoder.setValue(0, SLOW);
-            } else if (durationInMinutes > 60)
-            {
-                // lengthy ferries should be faster than average hiking
-                encoded = speedEncoder.setValue(0, FERRY);
-            } else
-            {
-                encoded = speedEncoder.setValue(0, MEAN);
-            }
-
+            encoded = handleFerry(way, SLOW, MEAN, FERRY);
             encoded |= directionBitMask;
         }
 
         return encoded;
     }
 
-    static int parseDuration( String str )
-    {
-        if (str == null)
-            return 0;
-
-        int index = str.indexOf(":");
-        if (index > 0)
-        {
-            int minutes = Integer.parseInt(str.substring(0, index)) * 60;
-            minutes += Integer.parseInt(str.substring(index + 1));
-            return minutes;
-        } else
-        {
-            return 0;
-        }
-    }
-
     @Override
-    public int analyzeNodeTags( OSMNode node )
+    public long analyzeNodeTags( OSMNode node )
     {
 
         // movable barriers block if they are not marked as passable
-        if (node.hasTag("barrier", potentialBarriers) && !node.hasTag(restrictions, intended) && !node.hasTag("locked", "no"))
+        if (node.hasTag("barrier", potentialBarriers)
+                && !node.hasTag(restrictions, intended)
+                && !node.hasTag("locked", "no"))
         {
             return directionBitMask;
         }
 
-        if ((node.hasTag("highway", "ford") || node.hasTag("ford")) && !node.hasTag(restrictions, intended))
+        if ((node.hasTag("highway", "ford") || node.hasTag("ford"))
+                && !node.hasTag(restrictions, intended))
         {
             return directionBitMask;
         }
 
         return 0;
     }
-
     private final Set<String> safeHighwayTags = new HashSet<String>()
     {
 
+        
         {
             add("footway");
             add("path");
@@ -245,6 +220,7 @@ public class FootFlagEncoder extends AbstractFlagEncoder
     private final Set<String> allowedHighwayTags = new HashSet<String>()
     {
 
+        
         {
             addAll(safeHighwayTags);
             add("trunk");

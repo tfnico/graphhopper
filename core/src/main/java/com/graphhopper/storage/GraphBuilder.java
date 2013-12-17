@@ -27,7 +27,7 @@ import com.graphhopper.routing.util.EncodingManager;
  */
 public class GraphBuilder
 {
-    private EncodingManager encodingManager;
+    private final EncodingManager encodingManager;
     private String location;
     private boolean mmap;
     private boolean store;
@@ -137,11 +137,11 @@ public class GraphBuilder
         }
         GraphStorage graph;
         if (level)
-            graph = new LevelGraphStorage(dir, encodingManager , turnCosts);
+            graph = new LevelGraphStorage(dir, encodingManager, turnCosts);
         else if (turnCosts)
             graph = new GraphStorageTurnCosts(dir, encodingManager);
         else
-            graph = new GraphStorage(dir, encodingManager);
+            graph = new GraphHopperStorage(dir, encodingManager);
         return graph;
     }
 

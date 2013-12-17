@@ -18,7 +18,7 @@
 package com.graphhopper.routing;
 
 import com.graphhopper.routing.util.FlagEncoder;
-import com.graphhopper.routing.util.WeightCalculation;
+import com.graphhopper.routing.util.Weighting;
 import com.graphhopper.storage.EdgeEntry;
 import com.graphhopper.storage.Graph;
 import com.graphhopper.util.EdgeExplorer;
@@ -31,93 +31,102 @@ import java.util.PriorityQueue;
  * Implements a single source shortest path algorithm
  * http://en.wikipedia.org/wiki/Dijkstra's_algorithm
  * <p/>
- * 
  * @author Peter Karich
  */
 public class Dijkstra extends AbstractRoutingAlgorithm
 {
-    protected TIntObjectMap<EdgeEntry> map = new TIntObjectHashMap<EdgeEntry>();
-    protected PriorityQueue<EdgeEntry> heap = new PriorityQueue<EdgeEntry>();
-    protected boolean alreadyRun;
-    protected int visitedNodes;
+    private TIntObjectMap<EdgeEntry> fromMap;
+    private PriorityQueue<EdgeEntry> fromHeap;
+    private int visitedNodes;
+    private int to = -1;
+    private EdgeEntry currEdge;
 
-    public Dijkstra( Graph graph, FlagEncoder encoder, WeightCalculation type )
+    public Dijkstra( Graph g, FlagEncoder encoder, Weighting weighting )
     {
-        super(graph, encoder, type);
+        super(g, encoder, weighting);
+        initCollections(1000);
+    }
+
+    protected void initCollections( int size )
+    {
+        fromHeap = new PriorityQueue<EdgeEntry>(size);
+        fromMap = new TIntObjectHashMap<EdgeEntry>(size);
     }
 
     @Override
     public Path calcPath( int from, int to )
     {
-        if ( alreadyRun )
-            throw new IllegalStateException("Create a new instance per call");
-
-        alreadyRun = true;
-        EdgeEntry fromEdge = new EdgeEntry(EdgeIterator.NO_EDGE, from, 0d);
-        map.put(from, fromEdge);
-        EdgeEntry currEdge = calcEdgeEntry(fromEdge, to);
-        if ( currEdge == null || currEdge.endNode != to )
-            return new Path(graph, flagEncoder);
-
-        return extractPath(currEdge);
+        checkAlreadyRun();
+        this.to = to;
+        currEdge = createEdgeEntry(from, 0);
+        fromMap.put(from, currEdge);
+        return runAlgo();
     }
 
-    public EdgeEntry calcEdgeEntry( EdgeEntry currEdge, int to )
-    {       
+    private Path runAlgo()
+    {
         EdgeExplorer explorer = outEdgeExplorer;
-        while ( true )
+        while (true)
         {
             visitedNodes++;
-            if ( finished(currEdge, to) )
+            if (finished())
                 break;
 
             int neighborNode = currEdge.endNode;
-            explorer.setBaseNode(neighborNode);
-            while ( explorer.next() )
+            EdgeIterator iter = explorer.setBaseNode(neighborNode);
+            while (iter.next())
             {
-                if ( !accept(explorer) )
+                if (!accept(iter))
                     continue;
-                int tmpNode = explorer.getAdjNode();
-                double tmpWeight = weightCalc.getWeight(explorer.getDistance(), explorer.getFlags())
-                        + currEdge.weight
-                        + turnCostCalc.getTurnCosts(neighborNode, currEdge.edge, explorer.getEdge());
-                EdgeEntry nEdge = map.get(tmpNode);
-                if ( nEdge == null )
+                // minor speed up
+                if (currEdge.edge == iter.getEdge())
+                    continue;
+
+                int tmpNode = iter.getAdjNode();
+                double tmpWeight = weighting.calcWeight(iter) + currEdge.weight;
+                tmpWeight += turnCostCalc.getTurnCosts(neighborNode, currEdge.edge, iter.getEdge());
+
+                EdgeEntry nEdge = fromMap.get(tmpNode);
+                if (nEdge == null)
                 {
-                    nEdge = new EdgeEntry(explorer.getEdge(), tmpNode, tmpWeight);
+                    nEdge = new EdgeEntry(iter.getEdge(), tmpNode, tmpWeight);
                     nEdge.parent = currEdge;
-                    map.put(tmpNode, nEdge);
-                    heap.add(nEdge);
-                } else if ( nEdge.weight > tmpWeight )
+                    fromMap.put(tmpNode, nEdge);
+                    fromHeap.add(nEdge);
+                } else if (nEdge.weight > tmpWeight)
                 {
-                    heap.remove(nEdge);
-                    nEdge.edge = explorer.getEdge();
+                    fromHeap.remove(nEdge);
+                    nEdge.edge = iter.getEdge();
                     nEdge.weight = tmpWeight;
                     nEdge.parent = currEdge;
-                    heap.add(nEdge);
+                    fromHeap.add(nEdge);
                 }
 
                 updateShortest(nEdge, neighborNode);
             }
 
-            if ( heap.isEmpty() )
-                return null;
+            if (fromHeap.isEmpty())
+                return createEmptyPath();
 
-            currEdge = heap.poll();
-            if ( currEdge == null )
-                throw new AssertionError("null currEdge cannot happen?");
+            currEdge = fromHeap.poll();
+            if (currEdge == null)
+                throw new AssertionError("Empty edge cannot happen");
         }
-        return currEdge;
+        return extractPath();
     }
 
-    protected boolean finished( EdgeEntry currEdge, int to )
+    @Override
+    protected boolean finished()
     {
         return currEdge.endNode == to;
     }
 
-    public Path extractPath( EdgeEntry goalEdge )
+    @Override
+    protected Path extractPath()
     {
-        return new Path(graph, flagEncoder).setEdgeEntry(goalEdge).extract();
+        if (currEdge == null || !finished())
+            return createEmptyPath();
+        return new Path(graph, flagEncoder).setEdgeEntry(currEdge).extract();
     }
 
     @Override

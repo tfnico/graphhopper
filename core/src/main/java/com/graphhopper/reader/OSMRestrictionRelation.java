@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map;
 
+import com.graphhopper.routing.util.DefaultEdgeFilter;
+import com.graphhopper.storage.GraphHopperStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,6 +24,7 @@ import com.graphhopper.util.Helper;
  */
 public class OSMRestrictionRelation
 {
+    protected static final int TOWER_NODE = -2;
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
     public static final int TYPE_UNSUPPORTED = 0;
@@ -48,13 +51,12 @@ public class OSMRestrictionRelation
     /**
      * transforms this relation into a collection of node cost entries
      * 
+     *
      * @param g the graph which provides node cost tables
-     * @param edgeOutFilter an edge filter which only allows outgoing edges
-     * @param edgeInFilter an edge filter which only allows incoming edges
-     * @return a collection of node cost entries which can be added to the graph later
+     * @param edgeOutExplorer
+     *@param edgeInExplorer @return a collection of node cost entries which can be added to the graph later
      */
-    public Collection<TurnCostsEntry> getAsEntries( GraphTurnCosts g,
-            EdgeExplorer edgeOutExplorer, EdgeExplorer edgeInExplorer, DataAccess osmidsOfEdges )
+    public Collection<TurnCostsEntry> getAsEntries( GraphTurnCosts g, DefaultEdgeFilter edgeOutFilter, DefaultEdgeFilter edgeInFilter, DataAccess osmidsOfEdges )
     {
         Collection<TurnCostsEntry> entries = new ArrayList<TurnCostsEntry>(3);
         if (via == EdgeIterator.NO_EDGE)
@@ -66,19 +68,22 @@ public class OSMRestrictionRelation
             int edgeIdFrom = EdgeIterator.NO_EDGE;
 
             // get all incoming edges and receive the edge which is defined by osmFrom
-            edgeInExplorer.setBaseNode(via);
+            EdgeExplorer edgeInExplorer = g.createEdgeExplorer(edgeInFilter);
+            EdgeExplorer edgeOutExplorer = g.createEdgeExplorer(edgeOutFilter);
 
-            while ( edgeInExplorer.next() )
+            EdgeIterator edgeInIterator = edgeInExplorer.setBaseNode(via);
+
+            while ( edgeInIterator.next() )
             {
-                if (osmid(edgeInExplorer.getEdge(), osmidsOfEdges) == fromOsm)
+                if (osmid(edgeInIterator.getEdge(), osmidsOfEdges) == fromOsm)
                 {
-                    edgeIdFrom = edgeInExplorer.getEdge();
+                    edgeIdFrom = edgeInIterator.getEdge();
                     break;
                 }
             }
 
             //get all outgoing edges of the via node 
-            edgeOutExplorer.setBaseNode(via);
+            EdgeIterator edgeOutIterator = edgeOutExplorer.setBaseNode(via);
             if (edgeIdFrom != EdgeIterator.NO_EDGE)
             {
                 if (restriction == TYPE_NO_U_TURN
@@ -88,15 +93,15 @@ public class OSMRestrictionRelation
                 {
                     // if we have a restriction of TYPE_NO_* we add restriction only to
                     // the given turn (from, via, to)  
-                    while ( edgeOutExplorer.next() )
+                    while ( edgeOutIterator.next() )
                     {
-                        if (edgeOutExplorer.getEdge() != edgeIdFrom
-                                && osmid(edgeOutExplorer.getEdge(), osmidsOfEdges) == toOsm)
+                        if (edgeOutIterator.getEdge() != edgeIdFrom
+                                && osmid(edgeOutIterator.getEdge(), osmidsOfEdges) == toOsm)
                         {
                             entries.add(new TurnCostsEntry()
                                     .flags(TurnCostEncoder.restriction()).node(via)
                                     .edgeFrom(edgeIdFrom)
-                                    .edgeTo(edgeOutExplorer.getEdge()));
+                                    .edgeTo(edgeOutIterator.getEdge()));
                         }
                     }
 
@@ -106,18 +111,17 @@ public class OSMRestrictionRelation
                 {
                     // if we have a restriction of TYPE_ONLY_* we add restriction to
                     // any turn possibility (from, via, * ) except the given turn
-                    while ( edgeOutExplorer.next() )
+                    while ( edgeOutIterator.next() )
                     {
-                        if (edgeOutExplorer.getEdge() != edgeIdFrom
-                                && osmid(edgeOutExplorer.getEdge(), osmidsOfEdges) != toOsm)
+                        if (edgeOutIterator.getEdge() != edgeIdFrom
+                                && osmid(edgeOutIterator.getEdge(), osmidsOfEdges) != toOsm)
                         {
                             entries.add(new TurnCostsEntry()
                                     .flags(TurnCostEncoder.restriction()).node(via)
                                     .edgeFrom(edgeIdFrom)
-                                    .edgeTo(edgeOutExplorer.getEdge()));
+                                    .edgeTo(edgeOutIterator.getEdge()));
                         }
                     }
-                    ;
                 }
             }
         } catch (Exception e)
@@ -157,7 +161,7 @@ public class OSMRestrictionRelation
                 } else if (OSMElement.NODE == member.type() && "via".equals(member.role()))
                 {
                     int tmpNode = osmNodeIDToIndexMap.get(member.ref());
-                    if (tmpNode < OSMReaderHelper.TOWER_NODE)
+                    if (tmpNode < TOWER_NODE)
                     {
                         tmpNode = -tmpNode - 3;
                         restriction.via = tmpNode;

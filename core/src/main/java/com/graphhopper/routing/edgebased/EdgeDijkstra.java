@@ -18,18 +18,17 @@
  */
 package com.graphhopper.routing.edgebased;
 
-import gnu.trove.map.TIntObjectMap;
-import gnu.trove.map.hash.TIntObjectHashMap;
-
-import java.util.PriorityQueue;
-
 import com.graphhopper.routing.Path;
 import com.graphhopper.routing.util.FlagEncoder;
-import com.graphhopper.routing.util.WeightCalculation;
+import com.graphhopper.routing.util.Weighting;
 import com.graphhopper.storage.EdgeEntry;
 import com.graphhopper.storage.Graph;
 import com.graphhopper.util.EdgeExplorer;
 import com.graphhopper.util.EdgeIterator;
+import gnu.trove.map.TIntObjectMap;
+import gnu.trove.map.hash.TIntObjectHashMap;
+
+import java.util.PriorityQueue;
 
 /**
  * An edge-based version of Dijkstras Algorithms. End link costs will be stored for each edge
@@ -50,12 +49,25 @@ public class EdgeDijkstra extends AbstractEdgeBasedRoutingAlgorithm
     protected PriorityQueue<EdgeEntry> heap = new PriorityQueue<EdgeEntry>();
     protected boolean alreadyRun;
     protected int visitedNodes;
+    private EdgeEntry currEdge;
+    private int to;
 
-    public EdgeDijkstra( Graph g, FlagEncoder encoder, WeightCalculation type )
+    public EdgeDijkstra( Graph g, FlagEncoder encoder, Weighting weighting )
     {
-        super(g, encoder, type);
+        super(g, encoder, weighting);
     }
-    
+
+    @Override
+    protected boolean finished() {
+        return currEdge.endNode == to;
+    }
+
+    @Override
+    public Path extractPath()
+    {
+        return new Path(graph, flagEncoder).setEdgeEntry(currEdge).extract();
+    }
+
     @Override
     public Path calcPath( int from, int to )
     {
@@ -63,11 +75,12 @@ public class EdgeDijkstra extends AbstractEdgeBasedRoutingAlgorithm
             throw new IllegalStateException("Create a new instance per call");
         alreadyRun = true;
         EdgeEntry fromEdge = new EdgeEntry(EdgeIterator.NO_EDGE, from, 0d);
-        EdgeEntry currEdge = calcEdgeEntry(fromEdge, to);
+        currEdge = calcEdgeEntry(fromEdge, to);
+        this.to = to;
         if ( currEdge == null || currEdge.endNode != to )
             return new Path(graph, flagEncoder);
 
-        return extractPath(currEdge);
+        return extractPath();
     }
 
     public EdgeEntry calcEdgeEntry( EdgeEntry currEdge, int to )
@@ -76,39 +89,38 @@ public class EdgeDijkstra extends AbstractEdgeBasedRoutingAlgorithm
         while ( true )
         {
             visitedNodes++;
-            if ( finished(currEdge, to) )
+            if ( finished() )
                 break;
 
             int neighborNode = currEdge.endNode;
-            explorer.setBaseNode(neighborNode);
-            while ( explorer.next() )
+            EdgeIterator edgeIterator = explorer.setBaseNode(neighborNode);
+            while ( edgeIterator.next() )
             {
-                if ( !accept(explorer, currEdge) )
+                if ( !accept(edgeIterator, currEdge) )
                     continue;
 
                 //we need to distinguish between backward and forward direction when storing end weights
-                int key = createIterKey(explorer, false);
+                int key = createIterKey(edgeIterator, false);
 
-                int tmpNode = explorer.getAdjNode();
-                double tmpWeight = weightCalc.getWeight(explorer.getDistance(), explorer.getFlags())
+                int tmpNode = edgeIterator.getAdjNode();
+                double tmpWeight = weighting.calcWeight(edgeIterator)
                         + currEdge.weight
-                        + turnCostCalc.getTurnCosts(neighborNode, currEdge.edge, explorer.getEdge());
+                        + turnCostCalc.getTurnCosts(neighborNode, currEdge.edge, edgeIterator.getEdge());
                 EdgeEntry nEdge = map.get(key);
                 if ( nEdge == null )
                 {
-                    nEdge = new EdgeEntry(explorer.getEdge(), tmpNode, tmpWeight);
+                    nEdge = new EdgeEntry(edgeIterator.getEdge(), tmpNode, tmpWeight);
                     nEdge.parent = currEdge;
                     map.put(key, nEdge);
                     heap.add(nEdge);
                 } else if ( nEdge.weight > tmpWeight )
                 {
                     heap.remove(nEdge);
-                    nEdge.edge = explorer.getEdge();
+                    nEdge.edge = edgeIterator.getEdge();
                     nEdge.weight = tmpWeight;
                     nEdge.parent = currEdge;
                     heap.add(nEdge);
                 }
-
                 updateShortest(nEdge, neighborNode);
             }
 
@@ -119,16 +131,6 @@ public class EdgeDijkstra extends AbstractEdgeBasedRoutingAlgorithm
                 throw new AssertionError("cannot happen?");
         }
         return currEdge;
-    }
-
-    protected boolean finished( EdgeEntry currEdge, int to )
-    {
-        return currEdge.endNode == to;
-    }
-
-    public Path extractPath( EdgeEntry goalEdge )
-    {
-        return new Path(graph, flagEncoder).setEdgeEntry(goalEdge).extract();
     }
 
     @Override

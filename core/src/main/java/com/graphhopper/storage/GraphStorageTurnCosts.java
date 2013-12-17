@@ -1,19 +1,19 @@
 package com.graphhopper.storage;
 
-import static com.graphhopper.util.Helper.nf;
-
 import com.graphhopper.routing.util.EncodingManager;
 import com.graphhopper.routing.util.TurnCostEncoder;
 import com.graphhopper.util.EdgeIterator;
 import com.graphhopper.util.Helper;
 import com.graphhopper.util.TurnCostIterator;
 
+import static com.graphhopper.util.Helper.nf;
+
 /**
  * Additionally stores node costs of nodes.
  * 
  * @author Karl Hübner
  */
-public class GraphStorageTurnCosts extends GraphStorage implements GraphTurnCosts
+public class GraphStorageTurnCosts extends GraphHopperStorage implements GraphTurnCosts
 {
 
     /* pointer for no cost entry */
@@ -72,14 +72,13 @@ public class GraphStorageTurnCosts extends GraphStorage implements GraphTurnCost
     }
 
     @Override
-    public GraphStorage setSegmentSize( int bytes )
+    public void setSegmentSize( int bytes )
     {
         super.setSegmentSize(bytes);
         if (supportTurnCosts)
         {
             turnCosts.setSegmentSize(bytes);
         }
-        return this;
     }
 
     @Override
