@@ -97,7 +97,7 @@ public class EdgeAStar extends AbstractEdgeBasedRoutingAlgorithm
 
         EdgeExplorer explorer = outEdgeExplorer;
 
-        EdgeIterator edgeIterator = explorer.setBaseNode(EdgeIterator.NO_EDGE);
+        EdgeIterator edgeIterator = explorer.setBaseNode(0);
         while ( true )
         {
             int currVertex = currEdge.endNode;
